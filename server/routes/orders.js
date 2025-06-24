@@ -2,55 +2,57 @@ const express = require('express');
 const router = express.Router();
 const Order = require('../models/Order');
 
-// POST /api/orders — Create a new order
+// Utility: normalize any mobile format to last 10 digits
+const normalizeMobile = (raw) => raw.replace(/\D/g, '').slice(-10);
+
+// 📦 POST /api/orders — Create a new order
 router.post('/', async (req, res) => {
   try {
-    const { mobile, items, fingerprint } = req.body;
+    const { mobile, items, createdAt, deliveryDate, fingerprint } = req.body;
 
-    if (!mobile || !items || !fingerprint) {
-      return res.status(400).json({ message: 'Missing required fields' });
+    if (!mobile || !items || items.length === 0 || !fingerprint) {
+      return res.status(400).json({ error: 'Missing required fields' });
     }
 
-    const existingOrder = await Order.findOne({ fingerprint });
-    if (existingOrder) {
-      console.warn('⚠️ Duplicate order blocked');
-      return res.status(409).json({ message: 'Duplicate order' });
-    }
+    const normalizedMobile = normalizeMobile(mobile);
 
-    const createdAt = new Date(); // Indian local time
-    const deliveryDate = new Date();
-    deliveryDate.setDate(createdAt.getDate() + 5);
+      const newOrder = new Order({
+        mobile: normalizedMobile, // ✅ always save 10-digit format
+        items,
+        createdAt: createdAt || new Date(),
+        deliveryDate,
+        fingerprint,
+      });
 
-    const order = new Order({
-      mobile,
-      items,
-      fingerprint,
-      createdAt,
-      deliveryDate
-    });
-
-    const saved = await order.save();
-    res.status(201).json(saved);
-  } catch (err) {
-    console.error('❌ Order save error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    const savedOrder = await newOrder.save();
+    console.log('✅ Order saved for mobile:', normalizedMobile);
+    res.status(201).json(savedOrder);
+  } catch (error) {
+    console.error('❌ Failed to save order:', error.message);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 
-// GET /api/orders/:mobile — Get orders by mobile number
+// 📥 GET /api/orders/:mobile — Get orders by normalized mobile number
 router.get('/:mobile', async (req, res) => {
   try {
-    const mobile = decodeURIComponent(req.params.mobile);
+    const raw = decodeURIComponent(req.params.mobile);
+    const mobile = normalizeMobile(raw);
+
+    if (!mobile) {
+      return res.status(400).json({ error: 'Mobile number required' });
+    }
+
     const orders = await Order.find({ mobile }).sort({ createdAt: -1 });
 
     if (!orders.length) {
-      return res.status(404).json({ message: 'No orders found' });
+      return res.status(404).json({ error: 'No orders found for this number' });
     }
 
-    res.json(orders);
-  } catch (err) {
-    console.error('❌ Order fetch error:', err.message);
-    res.status(500).json({ message: 'Server error' });
+    res.status(200).json(orders);
+  } catch (error) {
+    console.error('❌ Error fetching orders:', error.message);
+    res.status(500).json({ error: 'Internal Server Error' });
   }
 });
 

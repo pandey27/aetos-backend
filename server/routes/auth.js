@@ -54,14 +54,26 @@ router.post('/mobile-login', async (req, res) => {
 
     await user.save();
 
-    // Optionally generate a JWT if needed
+    if (!user._id) {
+      return res.status(500).json({ message: "User object missing _id after save" });
+    }
+
     const token = jwt.sign({ id: user._id }, 'your_jwt_secret', { expiresIn: '1d' });
 
-    res.json({ message: "User saved", user, token });
+    return res.status(200).json({
+      message: "User saved",
+      user: {
+        _id: user._id,
+        name: user.name,
+        mobile: user.mobile,
+        address: user.address,
+      },
+      token
+    });
   } catch (err) {
-    res.status(500).json({ message: "Server error", error: err.message });
+    console.error("❌ mobile-login error:", err);
+    return res.status(500).json({ message: "Server error", error: err.message });
   }
 });
-
 
 module.exports = router;
